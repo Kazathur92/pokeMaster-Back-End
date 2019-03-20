@@ -1,53 +1,196 @@
+from django.contrib.auth.models import User
+from django.shortcuts import render, get_object_or_404
+
+from rest_framework.response import Response
+from rest_framework.authtoken.models import Token
+from django.views.decorators.csrf import csrf_exempt
+import json
+
 from rest_framework import viewsets
+from rest_framework import filters
+from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework.reverse import reverse
-from movies.models import Movie, Director
-from movies.serializers import MovieSerializer, DirectorSerializer
-from django.shortcuts import render
-from rest_framework import filters
+from pokeMaster.models import Deck
+from pokeMaster.models import Card
+from pokeMaster.models import DeckCardsRelationship
+from pokeMaster.serializers import DeckSerializer
+from pokeMaster.serializers import CardSerializer
+from pokeMaster.serializers import UserSerializer
+from pokeMaster.serializers import DeckCardsRelationshipSerializer
+from pokeMaster.serializers import TokenSerializer
 
-@api_view(['GET'])
-def api_root(request, format=None):
-    return Response({
-        'movies': reverse('movies', request=request, format=format),
-        'directors': reverse('directors', request=request, format=format)
-    })
+
+
+
+
+@csrf_exempt
+def register_user(request):
+    '''Handles the creation of a new user for authentication
+
+    Method arguments:
+      request -- The full HTTP request object
+    '''
+
+    # Load the JSON string of the request body into a dict
+    req_body = json.loads(request.body.decode())
+
+    # Create a new user by invoking the `create_user` helper method
+    # on Django's built-in User model
+    new_user = User.objects.create_user(
+                    username=req_body['username'],
+                    password=req_body['password'],
+                    email=req_body['email'],
+                    first_name=req_body['first_name'],
+                    last_name=req_body['last_name'],
+                    )
+
+    # Use the REST Framework's token generator on the new user account
+    # This is the same as calling a method for loggin in a user after you create their account
+    token = Token.objects.create(user=new_user)
+    # print("REQUEST: ", request.__dict__)
+    print("REQUEST BODY: ", request.body)
+    # Return the token to the client
+    data = json.dumps({"token":token.key})
+    return HttpResponse(data, content_type='application/json')
+
+
 
 class DeckViewSet(viewsets.ModelViewSet):
     queryset = Deck.objects.all()
     serializer_class = DeckSerializer
+    http_method_names = ['get', 'post', 'put', 'delete', 'patch']
 
-    filter_backends = (filters.SearchFilter,)
-    search_fields = ('name', 'date_added', 'deleted_on', 'url')
 
-    # def get_queryset(self):
-    #     query_set = Movie.objects.all()
-    #     # when a dictionary you can use get to search for something and if its not there you can give it
-    #     # a default value of None or anything else
-    #     keyword = self.request.query_params.get('search', None)
-    #     if keyword is not None:
-    #         print("query params", keyword)
-    #         query_set = query_set.filter(title__icontains=keyword)
-    #     return query_set
+    def get_queryset(self):
 
+        print("USER 1", self.request.__dict__)
+        print("USER 1", self.request.auth)
+
+
+
+        if self.request.auth is None:
+            allDecks = Deck.objects.all()
+            return allDecks
+
+        else:
+            print(self.request.method )
+            print("USER", self.request.user)
+            user = self.request.user
+            userDecks = Deck.objects.filter(user=user)
+
+            return userDecks
+
+
+class CardViewSet(viewsets.ModelViewSet):
+    queryset = Card.objects.all()
+    serializer_class = CardSerializer
+    print("HELLO")
+
+    def destroy(self, request, *args, **kwargs):
+        print("INSIDE DESTROY")
+        print("SELF", self)
+        print("QUERY", self.request.query_params)
+        print("REQUEST", request.__dict__)
+        print("ARGS", args)
+        print("KWARGS", kwargs['pk'])
+
+        card_id = kwargs['pk']
+        card = Card.objects.get(pk=card_id)
+        card.delete()
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    def get_queryset(self):
+
+
+        if self.request.auth is None:
+            allCards = Card.objects.all()
+            return allCards
+
+        else:
+            print("USER", self.request.user)
+            user = self.request.user
+            userCards = Card.objects.filter(user=user)
+            return userCards
 
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
     serializer_class = UserSerializer
 
-     search_fields = ('user_name', 'password', 'first_name', 'last_name', 'date_added', 'deleted_on', 'url')
 
-    # def get_queryset(self):
-    #   query_set = User.objects.all()
-    #   # print("query", query_set[0])
-    #   keyword = self.request.query_params.get('jerk', None)
-    #   if keyword is not None:
-    #     query_set = query_set.filter(is_arrogant_jerk=True)
-    #   return query_set
+class UserIdViewSet(viewsets.ModelViewSet):
+    serializer_class = UserSerializer
+
+    def get_queryset(self):
+        print("USER ID: ", self.request.user.id)
+        return User.objects.filter(id=self.request.user.id)
+
+class DeckCardRelationshipForIdViewSet(viewsets.ModelViewSet):
+    queryset = DeckCardsRelationship.objects.all()
+    serializer_class = DeckCardsRelationshipSerializer
+
+    def destroy(self, request, *args, **kwargs):
+        print("WOOHO")
+
+        cardApiId = request.query_params['card']
+        deckId = self.request.parser_context['kwargs']['pk']
+        print("CARD API ID", cardApiId)
+        print("DECK ID", deckId)
+
+        cardInRelationship = DeckCardsRelationship.objects.filter(cardId=cardApiId, deck=deckId)[0]
+        print("CARD ID IN CARDS", cardInRelationship.card_id)
+        cardDb_id = cardInRelationship.card_id
+        print("cardDb_id")
+        cardInCards = get_object_or_404(Card, pk=cardDb_id)
+        print("THE CARD", cardInCards.__dict__)
+        cardInCards.delete()
+        cardInRelationship.delete()
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+class DeckCardRelationshipViewSet(viewsets.ModelViewSet):
+    queryset = DeckCardsRelationship.objects.all()
+    serializer_class = DeckCardsRelationshipSerializer
 
 
-# Create your views here.
+    def get_queryset(self):
+
+        print("REQUEST", self.request.query_params['filter'])
+        deckUrl = self.request.query_params['filter']
+
+        userCards = DeckCardsRelationship.objects.filter(deck=deckUrl)
+        print("USER CARDS: " , userCards)
+
+        return userCards
+
+
+    def destroy(self, request, *args, **kwargs):
+
+        print("REQUEST DICTIONARY", request.__dict__)
+        print("REQUEST", self.request.parser_context['kwargs']['pk'])
+        print("REQUEST: ", request.query_params)
+        print("REQUEST: ", request.query_params['card'])
+
+
+        cardApiId = request.query_params['card']
+        deckId = self.request.parser_context['kwargs']['pk']
+
+        cardInDatabase = DeckCardsRelationship.objects.filter(cardId=cardApiId, deck_id=deckId)[0]
+
+        print("CARD", cardInDatabase)
+        cardInDatabase.delete()
+
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
+        # return
+
+
+class TokenViewSet(viewsets.ModelViewSet):
+    queryset = Token.objects.all()
+    serializer_class = TokenSerializer
+
 
 
 

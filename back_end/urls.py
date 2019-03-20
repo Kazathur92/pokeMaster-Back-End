@@ -14,9 +14,18 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
-from django.urls import path
+from django.urls import path, include
+from rest_framework.authtoken.views import obtain_auth_token
+from django.conf.urls import url, include
+from pokeMaster import views
+
+# app_name = "pokeMaster"
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('', include('pokeMaster.urls'))
+    path('', include('pokeMaster.urls')),
+    url(r'^api/v1/register/', views.register_user),
+    url(r'^api/v1/api-token-auth/', obtain_auth_token),
+    url(r'^api-auth/', include('rest_framework.urls', namespace='rest_framework'))
 ]
+
